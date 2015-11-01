@@ -13,7 +13,7 @@ public class Client
         IoConnector connector = new NioSocketConnector();  
         connector.setConnectTimeoutMillis(3000);  
         connector.getFilterChain().addLast("codec", new ProtocolCodecFilter(new ObjectSerializationCodecFactory()));  
-        connector.setHandler(new ClientHandler(new UserInfo("hello I am the client")));  
+        connector.setHandler(new ClientHandler());  
         IoSession session = null;
         try
             {
@@ -26,16 +26,6 @@ public class Client
             {
                 System.out.println("Failed to connect:");
                 e.printStackTrace();
-            }
-        while (true)
-            {
-                String input = System.console().readLine();
-                if ( input.toLowerCase().equals("quit") )
-                    {
-                        System.out.println("Quitting.");
-                        break;
-                    }
-                session.write(new UserInfo(input));
             }
     }  
 } 
