@@ -1,0 +1,5 @@
+#!/bin/bash
+# for linux
+
+java -cp .:lib/* Client 
+
