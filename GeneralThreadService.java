@@ -1,18 +1,40 @@
-import java.util.*;
+import com.google.common.util.concurrent.*;
+import com.google.common.collect.*;
 import java.util.concurrent.*;
-import java.util.concurrent.atomic.*;
-import java.io.*;
-import com.google.common.collect.ImmutableList;
+import java.util.*;
 
+/**
+ * Runs WorkUnits.
+ */
 public class GeneralThreadService
 {
-    /** The thread pool size. */
-    public static final int NUMBER_OF_THREADS = 2;
+    /** The thread pool. */
+    private static final ListeningExecutorService SERVICE;
 
-    /** How many jobs can wait in the queue at one time. */
-    public static final int JOB_CAPACITY = 10000000;
+    /** A default callback that prints out any errors. */
+    private static final FutureCallback<Result> DEFAULT_CALLBACK;
 
-    private static final CustomThreadPoolExecutor EXECUTOR_SERVICE;
+    /** Static initializer. */
+    static
+    {
+        // setup the thread pool
+        ExecutorService fixedThreadPool = Executors.newFixedThreadPool(Settings.NUMBER_OF_THREADS);
+        SERVICE = MoreExecutors.listeningDecorator(fixedThreadPool);
+        System.out.printf("GeneralThreadService started with %d threads.\n", Settings.NUMBER_OF_THREADS);
+    
+        // create a default callback
+        DEFAULT_CALLBACK = new FutureCallback<Result>()
+            {
+                public void onSuccess(Result result)
+                {
+                }
+
+                public void onFailure(Throwable t)
+                {
+                    t.printStackTrace();
+                }
+            };        
+    }
 
     /** Not instantiable. */
     private GeneralThreadService()
@@ -20,184 +42,118 @@ public class GeneralThreadService
         throw new IllegalArgumentException("not instantiable");
     }
 
-    /** Static initializer. */
-    static
+    /** Run a job. */
+    public static ListenableFuture<Result> submit(WorkUnit workUnit)
     {
-        // create a thread pool that has exactly NUMBER_OF_THREADS threads
-        // when started, the executor service will create threads up to NUMBER_OF_THREADS
-        // these threads will be kept running until the service is shut down
-        // if more than JOB_CAPACITY jobs is placed in the queue, then the rejected execution policy will decide what happens
-        // the "caller runs policy" returns the excess work to the calling thread
+        // add a default callback that prints out any error if one occurred
+        ListenableFuture<Result> f = SERVICE.submit(workUnit);
+        Futures.addCallback(f, DEFAULT_CALLBACK);
+        return f;
+    }
 
-        // threads only created on demand
-        EXECUTOR_SERVICE = new CustomThreadPoolExecutor(NUMBER_OF_THREADS, // core pool size
-                                                       NUMBER_OF_THREADS, // maximum pool size
-                                                       1L, // keep alive time
-                                                       TimeUnit.MINUTES, // keep alive time unit
-                                                       new ArrayBlockingQueue<Runnable>(JOB_CAPACITY,true), // work queue
-                                                       new CustomThreadFactory("thread pool"), // thread factory
-                                                       new ThreadPoolExecutor.CallerRunsPolicy()); // rejected execution policy
-        System.out.println("GeneralThreadService initialized with " + NUMBER_OF_THREADS + " threads.");
+    /** Run a job with a callback. */
+    public static ListenableFuture<Result> submit(WorkUnit workUnit, FutureCallback<Result> callback)
+    {
+        ListenableFuture<Result> f = SERVICE.submit(workUnit);
+        Futures.addCallback(f, callback);
+        return f;
     }
 
     /**
-     * Forces the static initializer to run.
+     * Run a bunch of jobs and wait for the result.
+     * Treats both successes and failures as completed jobs.
+     * @param workUnits the work to do
+     * @param statusUpdate whether to return any status updates while waiting for the work to copmlete
+     * @return all the results
      */
-    public static void initialize()
+    public static List<Result> submitAndWait(List<WorkUnit> workUnits, boolean statusUpdate)
     {
-    }
+        if ( workUnits == null || workUnits.size() == 0 )
+            return ImmutableList.of();
 
-    /**
-     * Returns the number of jobs that are waiting in the thread pool queue.
-     * @return the number of waiting jobs
-     */
-    public static int queueSize()
-    {
-        return EXECUTOR_SERVICE.getQueue().size();
-    }
+        // create a latch so we can wait for all the jobs to finish
+        int numberOfJobs = workUnits.size();
+        final CountDownLatch latch = new CountDownLatch(numberOfJobs);
 
-    /**
-     * Submits the specified job.
-     * @param u the work to run
-     * @return a promise for the result in the future
-     */
-    public static Future<Result> submit(WorkUnit u)
-    {
-        return EXECUTOR_SERVICE.submit(u);
-    }
-
-    /** Alias method. */
-    public static Future<RemoteResult> submit(RemoteWorkUnit u)
-    {
-        return EXECUTOR_SERVICE.submit(u);
-    }
-
-    /**
-     * The thread pool that will run the work on the local node.
-     */
-    private static class CustomThreadPoolExecutor extends ThreadPoolExecutor
-    {
-        public CustomThreadPoolExecutor(int corePoolSize, int maximumPoolSize, long keepAliveTime, TimeUnit unit,
-                                        ArrayBlockingQueue<Runnable> workQueue, ThreadFactory threadFactory, RejectedExecutionHandler handler)
-        {
-            super(corePoolSize, maximumPoolSize, keepAliveTime, unit, workQueue, threadFactory, handler);
-        }
-
-        protected void beforeExecute(Thread t, Runnable r)
-        {
-            super.beforeExecute(t,r);
-        }
-
-        protected void afterExecute(Runnable r, Throwable t)
-        {
-            super.afterExecute(r,t);
-
-            // print exceptions if any
-            try
+        // create a callback that decrements the latch when each job succeeds or fails
+        FutureCallback<Result> callback = new FutureCallback<Result>()
+            {
+                public void onSuccess(Result result)
                 {
-                    Future<?> future = (Future<?>)r;
-                    future.get();
+                    latch.countDown();
                 }
-            catch (ExecutionException e)
+
+                public void onFailure(Throwable t)
                 {
-                    System.out.println("\n=== EXECUTION EXCEPTION ===\n");
-                    e.getCause().printStackTrace();
+                    t.printStackTrace();
+                    latch.countDown();
                 }
-            catch (Exception e)
-                {
-                    e.printStackTrace();
-                }
-        }
-    }
+            };
 
-    /**
-     * Creates the worker threads that will perform the work. 
-     */
-    private static class CustomThreadFactory implements ThreadFactory
-    {
-        private final String poolName;
-
-        public CustomThreadFactory(String poolName)
-        {
-            this.poolName = poolName;
-        }
-
-        // instead of creating Threads, create WorkerThreads (a descendent of Thread)
-        public Thread newThread(Runnable runnable)
-        {
-            return new WorkerThread(runnable, poolName);
-        }
-    }
-
-    /**
-     * The worker threads that will actually do the work.
-     */
-    public static class WorkerThread extends Thread
-    {
-        private static final AtomicInteger created = new AtomicInteger(); // thread safe integer
-
-        public WorkerThread(Runnable runnable, String name)
-        {
-            super(runnable, "thread " + created.incrementAndGet());
-            setDaemon(true);
-        }
-
-        public void run()
-        {
-            super.run();
-        }
-    }
-
-    /**
-     * Waits for the specified time.
-     * @param time time in milliseconds to wait
-     */
-    public static void wait(int time)
-    {
-        try
+        // submit the work
+        List<ListenableFuture<Result>> futures = new ArrayList<>(numberOfJobs);
+        for (WorkUnit u : workUnits)
+            futures.add( GeneralThreadService.submit(u, callback) );
+        
+        // wait for the work to finish
+        if ( statusUpdate )
             {
-                Thread.sleep(time);
+                while (true)
+                    {
+                        try
+                            {
+                                latch.await(500, TimeUnit.MILLISECONDS);
+                                break;
+                            }
+                        catch (InterruptedException e) {}
+                        System.out.printf("%d of %d jobs complete   \r", numberOfJobs-latch.getCount(), numberOfJobs);
+                    }
+                System.out.println("\nAll jobs complete.");
             }
-        catch (InterruptedException e)
+        else
             {
+                try { latch.await(); }
+                catch ( Exception e ) { e.printStackTrace(); }
             }
+
+        // return the results
+        List<Result> results = new ArrayList<>(numberOfJobs);
+        for (ListenableFuture<Result> f : futures)
+            {
+                try
+                    {
+                        Result result = f.get();
+                        results.add(result);
+                    }
+                catch (Exception e)
+                    {
+                        e.printStackTrace();
+                    }
+            }
+        return results;
     }
 
-    /**
-     * Waits for the specified jobs to finish.  No progress report.
-     * @param futures the futures of the jobs we want to wait for
-     */
-    public static void silentWaitForFutures(List<Future<Result>> futures)
+    /** Run a bunch of jobs and wait for the result with no status display. */
+    public static List<Result> submitAndWaitSilently(List<WorkUnit> workUnits)
     {
-        int totalJobs = futures.size();
-        while (true)
-            {
-                int numberDone = 0;
-                for (Future<Result> f : futures)
-                    if ( f.isDone() )
-                        numberDone++;
-                if ( numberDone == totalJobs )
-                    break;
-                wait(50);
-            }
+        return submitAndWait(workUnits, false);
     }
 
-    /**
-     * Waits for the specified local jobs to finish.  Progress report given.
-     */
-    public static void waitForFutures(List<Future<Result>> futures)
+    /** Run a bunch of jobs and wait for the result with a status display. */
+    public static List<Result> submitAndWait(List<WorkUnit> workUnits)
     {
-        int totalJobs = futures.size();
-        while (true)
-            {
-                int numberDone = 0;
-                for (Future<Result> f : futures)
-                    if ( f.isDone() )
-                        numberDone++;
-                System.out.printf("%d of %d jobs complete      queue: %d    \r", numberDone, totalJobs, queueSize());
-                if ( numberDone == totalJobs )
-                    break;
-                wait(50);
-            }
+        return submitAndWait(workUnits, true);
+    }
+    /** Run a remote job and automatically send back the result when it is finished. */
+
+    /** Run a bunch of remote jobs.  Automatically send back the results when finished. */
+
+
+    public static void main(String[] args)
+    {
+        List<WorkUnit> workList = new ArrayList<>();
+        for (int i=0; i < 16; i++)
+            workList.add(new DummyWorkUnit());
+        GeneralThreadService.submitAndWait(workList);
     }
 }

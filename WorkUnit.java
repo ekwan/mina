@@ -5,5 +5,6 @@ import java.util.concurrent.*;
  */
 public interface WorkUnit extends Callable<Result>
 {
+    /** Perform the work in this unit. */
     public Result call();
 }
