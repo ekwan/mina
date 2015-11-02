@@ -1,6 +1,7 @@
 import java.io.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.*;
+import java.util.*;
 
 /**
  * A wrapper for work units.  These can be sent over the network.

@@ -2,6 +2,7 @@ import com.google.common.util.concurrent.*;
 import com.google.common.collect.*;
 import java.util.concurrent.*;
 import java.util.*;
+import org.apache.mina.core.session.IoSession;
 
 /**
  * Runs WorkUnits.
@@ -31,6 +32,7 @@ public class GeneralThreadService
 
                 public void onFailure(Throwable t)
                 {
+                    System.out.println("=== EXECUTION EXCEPTION ===");
                     t.printStackTrace();
                 }
             };        
@@ -85,6 +87,7 @@ public class GeneralThreadService
 
                 public void onFailure(Throwable t)
                 {
+                    System.out.println("=== EXECUTION EXCEPTION ===");
                     t.printStackTrace();
                     latch.countDown();
                 }
@@ -100,13 +103,14 @@ public class GeneralThreadService
             {
                 while (true)
                     {
+                        System.out.printf("%d of %d jobs complete   \r", numberOfJobs-latch.getCount(), numberOfJobs);
                         try
                             {
-                                latch.await(500, TimeUnit.MILLISECONDS);
-                                break;
+                                boolean done = latch.await(500, TimeUnit.MILLISECONDS);
+                                if ( done )
+                                    break;
                             }
                         catch (InterruptedException e) {}
-                        System.out.printf("%d of %d jobs complete   \r", numberOfJobs-latch.getCount(), numberOfJobs);
                     }
                 System.out.println("\nAll jobs complete.");
             }
@@ -144,16 +148,43 @@ public class GeneralThreadService
     {
         return submitAndWait(workUnits, true);
     }
-    /** Run a remote job and automatically send back the result when it is finished. */
 
-    /** Run a bunch of remote jobs.  Automatically send back the results when finished. */
+    /**
+     * Run a remote job and automatically send back the result when it is finished.
+     * @param workEnvelope the work to do
+     * @param session where to send the result back to
+     */
+    public static void submit(final WorkEnvelope workEnvelope, final IoSession session)
+    {
+        // create a callback that sends back any successes and prints out any errors
+        FutureCallback<Result> callback = new FutureCallback<Result>()
+            {
+                public void onSuccess(Result result)
+                {
+                    long serverID = workEnvelope.serverID;
+                    ResultEnvelope resultEnvelope = new ResultEnvelope(result, Settings.HOSTNAME, serverID);
+                    session.write(resultEnvelope);
+                }
 
+                public void onFailure(Throwable t)
+                {
+                    System.out.println("=== EXECUTION EXCEPTION ===");
+                    t.printStackTrace();
+                }
+            };
 
+        // submit the job
+        ListenableFuture<Result> f = SERVICE.submit(workEnvelope.workUnit);
+        Futures.addCallback(f, callback);
+    }
+
+    /** For testing. */
     public static void main(String[] args)
     {
         List<WorkUnit> workList = new ArrayList<>();
         for (int i=0; i < 16; i++)
             workList.add(new DummyWorkUnit());
         GeneralThreadService.submitAndWait(workList);
+        System.exit(0);
     }
 }
