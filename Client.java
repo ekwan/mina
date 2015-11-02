@@ -1,13 +1,33 @@
-import java.net.InetSocketAddress;  
-  
+import java.net.*;
+import java.io.*;
+
 import org.apache.mina.core.service.IoConnector;  
 import org.apache.mina.filter.codec.ProtocolCodecFilter;  
 import org.apache.mina.filter.codec.serialization.ObjectSerializationCodecFactory;  
 import org.apache.mina.transport.socket.nio.NioSocketConnector;  
 import org.apache.mina.core.future.ConnectFuture;
 import org.apache.mina.core.session.IoSession;
+
 public class Client
 {  
+    public static final String NAME;
+
+    static
+    {
+        // set hostname
+        String temp = "";
+        try
+            {
+                temp = java.net.InetAddress.getLocalHost().getHostName();
+            }
+        catch (Exception e)
+            {
+                System.out.println("Warning, unable to detect hostname.  Using localhost.");
+                temp = "localhost";
+            }
+        NAME = temp;
+    }
+
     public static void main(String[] args)
     {  
         IoConnector connector = new NioSocketConnector();  

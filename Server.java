@@ -14,7 +14,7 @@ public class Server
 {  
     public static final ConcurrentLinkedQueue<RemoteWorkUnit> WORK_LIST = new ConcurrentLinkedQueue<>();
     public static final List<RemoteResult> FINISHED = Collections.synchronizedList(new ArrayList<RemoteResult>());
-    public static final int NUMBER_OF_UNITS = 10;
+    public static final int NUMBER_OF_UNITS = 30;
 
     public static void main(String[] args) throws IOException
     {  

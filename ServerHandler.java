@@ -10,7 +10,7 @@ public class ServerHandler extends IoHandlerAdapter
         if (message instanceof RemoteResult)
             {
                 RemoteResult result = (RemoteResult)message;
-                System.out.printf("Received work unit %d.\n", result.getServerID());
+                System.out.printf("Received work unit %d from %s.\n", result.getServerID(), result.getOrigin());
                 Server.FINISHED.add(result);
                 if ( Server.FINISHED.size() == Server.NUMBER_OF_UNITS )
                     {

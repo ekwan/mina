@@ -20,7 +20,7 @@ public class DummyRemoteWorkUnit implements RemoteWorkUnit, Serializable
         catch (InterruptedException e)
             {
             }
-        return new DummyRemoteResult(serverID);
+        return new DummyRemoteResult(serverID, Client.NAME);
     }
 
     public long getServerID()

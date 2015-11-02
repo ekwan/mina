@@ -8,6 +8,8 @@ public interface RemoteResult extends Serializable
     /** See {@link RemoteWorkUnit#getServerID()}. */
     public long getServerID();
     
+    public String getOrigin();
+
     @Override
     public String toString();
 }
