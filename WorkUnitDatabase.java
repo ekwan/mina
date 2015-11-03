@@ -93,7 +93,7 @@ public class WorkUnitDatabase implements Singleton
             try
                 {
                     WriteFuture future = session.write(envelope);
-                    System.out.printf("Sent work unit %d to %s.\n", envelope.serverID, remoteHostname);
+                    System.out.printf("[ %s ] Sent work unit %d to %s.\n", new Date().toString(), envelope.serverID, remoteHostname);
 
                     // update database
                     DatabaseEntry newEntry = new DatabaseEntry(envelope.serverID, oldEntry.workUnit, remoteHostname, Status.SENT_OUT, null, null);
@@ -162,10 +162,10 @@ public class WorkUnitDatabase implements Singleton
                 for (WorkEnvelope e : newWork)
                     workString += String.format("%d, ", e.serverID);
                 workString = workString.substring(0, workString.length()-2);
-                System.out.printf("%d units (%s) that were previously dispatched to %s have been requeued.\n", newWork.size(), workString, remoteHostname);
+                System.out.printf("[ %s ] %d units (%s) that were previously dispatched to %s have been requeued.\n", new Date().toString(), newWork.size(), workString, remoteHostname);
             }
         else
-            System.out.printf("No work to requeue for %s.\n", remoteHostname);
+            System.out.printf("[ %s ] No work to requeue for %s.\n", new Date().toString(), remoteHostname);
     }
 
     /** Forget about all jobs that have completed successfully or failed to save memory. */

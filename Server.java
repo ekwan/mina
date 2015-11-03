@@ -75,6 +75,8 @@ public class Server implements Singleton
                     {
                         System.out.println("Unable to start server:");
                         e.printStackTrace();
+                        try { Thread.sleep(5000); }
+                        catch ( Exception e2 ) {}
                     }
             }
         if ( !success )
@@ -121,9 +123,9 @@ public class Server implements Singleton
                     String remoteHostname = getHostname(session);
                     WorkUnitDatabase.receive(envelope, remoteHostname);
                     if ( envelope.errorMessage == null )
-                        System.out.printf("Received work unit %d from %s.\n", envelope.serverID, remoteHostname);
+                        System.out.printf("[ %s ] Received work unit %d from %s.\n", new Date().toString(), envelope.serverID, remoteHostname);
                     else
-                        System.out.printf("Received work unit %d from %s (FAILED : %s).\n", envelope.serverID, remoteHostname, envelope.errorMessage);
+                        System.out.printf("[ %s ] Received work unit %d from %s (FAILED : %s).\n", new Date().toString(), envelope.serverID, remoteHostname, envelope.errorMessage);
                     WorkUnitDatabase.sendOutWork(remoteHostname, session);
                 }
             else if (message instanceof String)
@@ -154,7 +156,7 @@ public class Server implements Singleton
                             KNOWN_CLIENTS.add(name);
                         }
                     int remoteThreads = Settings.getNumberOfThreads(name);
-                    System.out.printf("Connected to client at %s (%s, %d threads).\n", name, session.getRemoteAddress(), remoteThreads);
+                    System.out.printf("[ %s ] Connected to client at %s (%s, %d threads).\n", new Date().toString(), name, session.getRemoteAddress(), remoteThreads);
                     
                     // send the initial batch of jobs
                     for (int i=0; i < remoteThreads; i++)
