@@ -162,7 +162,7 @@ public class GeneralThreadService
                 public void onSuccess(Result result)
                 {
                     long serverID = workEnvelope.serverID;
-                    ResultEnvelope resultEnvelope = new ResultEnvelope(result, Settings.HOSTNAME, serverID);
+                    ResultEnvelope resultEnvelope = new ResultEnvelope(result, null, Settings.HOSTNAME, serverID);
                     session.write(resultEnvelope);
                 }
 
@@ -170,6 +170,9 @@ public class GeneralThreadService
                 {
                     System.out.println("=== EXECUTION EXCEPTION ===");
                     t.printStackTrace();
+                    long serverID = workEnvelope.serverID;
+                    ResultEnvelope resultEnvelope = new ResultEnvelope(null, t.getMessage(), Settings.HOSTNAME, serverID);
+                    session.write(resultEnvelope);
                 }
             };
 

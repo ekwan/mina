@@ -22,6 +22,11 @@ public class Settings implements Immutable, Singleton
          */
         public static final Map<String,Integer> NUMBER_OF_THREADS_MAP;
 
+        /**
+         * If the remote host is not in the database, how much work should it do at one time?
+         */
+        public static final int DEFAULT_REMOTE_NUMBER_OF_THREADS = 4;
+
         /** number of available threads for this machine */
         public static final int NUMBER_OF_THREADS;
 
@@ -48,7 +53,16 @@ public class Settings implements Immutable, Singleton
     // Network Settings
 
         /** If a client runs, where should it look for the server? */
-        public static final String SERVER_HOSTNAME = "";
+        public static final String SERVER_HOSTNAME = "127.0.0.1";
+
+        /** The server will listen for connections on this port. */
+        public static final int LISTENING_PORT = 9876;
+
+        /** The client will try to connect to the server this number of times. */
+        public static final int MAX_CONNECTION_ATTEMPTS = 5;
+
+        /** How long to wait between connection attempts in seconds. */
+        public static final int CONNECTION_RETRY_DELAY = 5;
 
     /** static initializer */
     static
@@ -161,6 +175,22 @@ public class Settings implements Immutable, Singleton
     /** not instantiable */
     private Settings()
     {
+    }
+
+    /**
+     * Determines how many jobs this host should be running simultaneously.
+     * @param hostname the host to get the number of threads for
+     * @return how many jobs this host should run simultaneously
+     */
+    public static int getNumberOfThreads(String hostname)
+    {
+        int numberOfThreads = DEFAULT_REMOTE_NUMBER_OF_THREADS;
+        for (String host : NUMBER_OF_THREADS_MAP.keySet())
+            {
+                if (hostname.contains(host))
+                    return NUMBER_OF_THREADS_MAP.get(host);
+            }
+        return numberOfThreads;
     }
 
     /** for testing */

@@ -14,8 +14,11 @@ public class ResultEnvelope implements Serializable, Immutable
     /** For assigning unique IDs. */
     public static final AtomicLong ID_GENERATOR = new AtomicLong();
 
-    /** The work that will be performed. */
+    /** The result of the requested calculation.  Null if the job failed. */
     public final Result result;
+
+    /** A failure message, if any.  Leave null if the job completed successfully. */
+    public final String errorMessage;
 
     /** Where this envelope was made. */
     public final String origin;
@@ -24,13 +27,12 @@ public class ResultEnvelope implements Serializable, Immutable
     public final long serverID;
 
     /** Create a ResultEnvelope with a particular serverID. */
-    public ResultEnvelope(Result result, String origin, long serverID)
+    public ResultEnvelope(Result result, String errorMessage, String origin, long serverID)
     {
-        if ( result == null )
-            throw new NullPointerException("null result");
         if ( origin == null )
             throw new NullPointerException("null origin");
         this.result = result;
+        this.errorMessage = errorMessage;
         this.origin = origin;
         this.serverID = serverID;
     }
@@ -44,7 +46,7 @@ public class ResultEnvelope implements Serializable, Immutable
     @Override
     public int hashCode()
     {
-        return Objects.hash(result, origin, serverID);
+        return Objects.hash(result, errorMessage, origin, serverID);
     }
 
     @Override
@@ -59,6 +61,7 @@ public class ResultEnvelope implements Serializable, Immutable
 
         ResultEnvelope e = (ResultEnvelope)obj;
         if ( Objects.equals(result, e.result) &&
+             Objects.equals(errorMessage, e.errorMessage) &&
              Objects.equals(origin, e.origin) &&
              serverID == e.serverID )
             return true;
