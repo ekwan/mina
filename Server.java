@@ -18,13 +18,11 @@ import org.apache.mina.core.future.WriteFuture;
  */
 public class Server implements Singleton
 {  
-    // Constants
-
     /** Should not be changed. */
     public static final int READ_BUFFER_SIZE = 2048;
 
-    /** Should not be changed.  Time in seconds. */
-    public static final int IDLE_TIME = 10;
+    /** Should not be changed.  Time in seconds for a connection to be considered idle. */
+    public static final int IDLE_TIME = 5;
 
     /** Listen for connections on this port. */
     public static final int LISTENING_PORT = Settings.LISTENING_PORT;
@@ -35,10 +33,8 @@ public class Server implements Singleton
     /** The hostname of the server. */
     public static final String HOSTNAME = Settings.HOSTNAME;
 
-    // Fields
-
-    /** The work to be performed. */
-    public static final ConcurrentLinkedQueue<WorkUnit> WORK_LIST = new ConcurrentLinkedQueue<WorkUnit>();
+    /** The list of known clients. */
+    private static final List<String> KNOWN_CLIENTS = Collections.synchronizedList(new ArrayList<String>());
 
     /** Not instantiable. */
     private Server()
@@ -46,8 +42,8 @@ public class Server implements Singleton
         throw new IllegalArgumentException("not instantiable");
     }
 
-    /** Static initializer. */
-    static
+    /** Start the server. */
+    public static void start()
     {
         // use a thread pool
         ExecutorFilter executor = new ExecutorFilter(NUMBER_OF_THREADS, NUMBER_OF_THREADS);  // number of threads to start with, max number of threads
@@ -87,14 +83,40 @@ public class Server implements Singleton
         {
             if (message instanceof ResultEnvelope)
                 {
+                    ResultEnvelope envelope = (ResultEnvelope)message;
+                    WorkUnitDatabase.receive(envelope);
                 }
             else if (message instanceof String)
                 {
-                    remoteHostname = (String)message;
+                    String name = (String)message;
+                    if (KNOWN_CLIENTS.contains(name))
+                        {
+                            // deal with possible duplicate client names
+                            int count = 1;
+                            boolean success = false;
+                            while ( count < 1000 )
+                                {
+                                    String candidate = String.format("%s-%d", name, count);
+                                    if ( !KNOWN_CLIENTS.contains(candidate) )
+                                        {
+                                            remoteHostname = candidate;
+                                            success = true;
+                                            break;
+                                        }
+                                    count++;
+                                }
+                            if ( !success )
+                                throw new IllegalArgumentException("couldn't find unique name for " + name);
+                        }
+                    else
+                        remoteHostname = name;
+                    KNOWN_CLIENTS.add(remoteHostname);
                     int remoteThreads = Settings.getNumberOfThreads(remoteHostname);
                     System.out.printf("Connected to client at %s (%s, %d threads).\n", remoteHostname, session.getRemoteAddress(), remoteThreads);
+                    
+                    // send the initial batch of jobs
                     for (int i=0; i < remoteThreads; i++)
-                        sendWork(session);
+                        WorkUnitDatabase.sendOutWork(remoteHostname, session);
                 }
             else
                 throw new IllegalArgumentException("unrecognized object type");
@@ -104,21 +126,29 @@ public class Server implements Singleton
         {
             // handshake by sending a string that contains the name of this host
             session.write(HOSTNAME);
-        }  
+        }
 
-        private void sendWork(IoSession session)
+        public void sessionIdle(IoSession session, IdleStatus status)
         {
-            WorkUnit workUnit = Server.WORK_LIST.poll();
-            if ( workUnit == null )
-                return;
-            WorkEnvelope workEnvelope = new WorkEnvelope(workUnit);
-            WriteFuture future = session.write(workEnvelope);
-            System.out.printf("Sent work unit %d to %s.\n", workEnvelope.serverID, remoteHostname);
+            WorkUnitDatabase.sendOutWork(remoteHostname, session);
+        }
+
+        public void sessionClosed(IoSession session) throws Exception
+        {
+            System.out.printf("Lost connection to %s.\n", remoteHostname);
+            WorkUnitDatabase.markAsDead(remoteHostname);
         }
     }
 
     /** For testing. */
     public static void main(String[] args) throws IOException
-    {  
+    {
+        for (int i=0; i < 10; i++)
+            {
+                DummyWorkUnit unit = new DummyWorkUnit();
+                WorkEnvelope workEnvelope = new WorkEnvelope(unit);
+                WorkUnitDatabase.submit(workEnvelope);
+            }
+        Server.start();
     }  
 }

@@ -15,8 +15,8 @@ public class Client implements Singleton
     /** The connection to the server. */
     private static IoSession IO_SESSION;
 
-    /** Static initializer. */
-    static
+    /** Start the client. */
+    public static void start()
     {
         int attempts = 0;
         boolean connected = false;
@@ -86,6 +86,8 @@ public class Client implements Singleton
         {  
             if (message instanceof WorkEnvelope)
                 {
+                    WorkEnvelope envelope = (WorkEnvelope)message;
+                    System.out.printf("Received work unit ID %d.\n", envelope.serverID);
                 }
             else if (message instanceof String)
                 {
@@ -113,6 +115,7 @@ public class Client implements Singleton
 
     /** For testing. */
     public static void main(String[] args)
-    {  
+    {
+        Client.start();
     }  
 } 
