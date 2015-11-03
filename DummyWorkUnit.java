@@ -17,12 +17,18 @@ public class DummyWorkUnit implements Immutable, WorkUnit, Serializable
     /** The time required for each job is the mean plus or minus this value in seconds. */
     public static final int WIDTH = 1;
 
-    public DummyWorkUnit()
+    /** If true, this unit will error out. */
+    public final boolean throwError;
+
+    public DummyWorkUnit(boolean throwError)
     {
+        this.throwError = throwError;
     }
 
     public DummyResult call()
     {
+        if (throwError)
+            throw new IllegalArgumentException("this is a contrived error");
         try
             {
                 int time = ThreadLocalRandom.current().nextInt(MEAN_TIME-WIDTH, MEAN_TIME+WIDTH+1);

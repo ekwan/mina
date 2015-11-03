@@ -34,7 +34,7 @@ public class Server implements Singleton
     public static final String HOSTNAME = Settings.HOSTNAME;
 
     /** The list of known clients. */
-    private static final List<String> KNOWN_CLIENTS = Collections.synchronizedList(new ArrayList<String>());
+    private static final List<String> KNOWN_CLIENTS = new ArrayList<String>();
 
     /** Not instantiable. */
     private Server()
@@ -71,7 +71,23 @@ public class Server implements Singleton
                 System.exit(1);
             }
      }
-    
+
+    /** Quit when all current jobs are complete.  Currently implemented in a stupid way. */
+    public static void waitForCompletion()
+    {
+        while (true)
+            {
+                if (WorkUnitDatabase.finished())
+                    {
+                        System.out.println("All jobs are complete.");
+                        WorkUnitDatabase.printResults();
+                        System.exit(0);
+                    }
+                try { Thread.sleep(500); }
+                catch (InterruptedException e) {}
+            }
+    }
+
     /**
      * This class determines what happens when events pertaining to a connection occur.
      */
@@ -91,28 +107,31 @@ public class Server implements Singleton
             else if (message instanceof String)
                 {
                     String name = (String)message;
-                    if (KNOWN_CLIENTS.contains(name))
+                    synchronized (KNOWN_CLIENTS)
                         {
-                            // deal with possible duplicate client names
-                            int count = 1;
-                            boolean success = false;
-                            while ( count < 1000 )
+                            if (KNOWN_CLIENTS.contains(name))
                                 {
-                                    String candidate = String.format("%s-%d", name, count);
-                                    if ( !KNOWN_CLIENTS.contains(candidate) )
+                                    // deal with possible duplicate client names
+                                    int count = 1;
+                                    boolean success = false;
+                                    while ( count < 1000 )
                                         {
-                                            remoteHostname = candidate;
-                                            success = true;
-                                            break;
+                                            String candidate = String.format("%s-%d", name, count);
+                                            if ( !KNOWN_CLIENTS.contains(candidate) )
+                                                {
+                                                    remoteHostname = candidate;
+                                                    success = true;
+                                                    break;
+                                                }
+                                            count++;
                                         }
-                                    count++;
+                                    if ( !success )
+                                        throw new IllegalArgumentException("couldn't find unique name for " + name);
                                 }
-                            if ( !success )
-                                throw new IllegalArgumentException("couldn't find unique name for " + name);
+                            else
+                                remoteHostname = name;
+                            KNOWN_CLIENTS.add(remoteHostname);
                         }
-                    else
-                        remoteHostname = name;
-                    KNOWN_CLIENTS.add(remoteHostname);
                     int remoteThreads = Settings.getNumberOfThreads(remoteHostname);
                     System.out.printf("Connected to client at %s (%s, %d threads).\n", remoteHostname, session.getRemoteAddress(), remoteThreads);
                     
@@ -139,6 +158,10 @@ public class Server implements Singleton
         {
             System.out.printf("Lost connection to %s.\n", remoteHostname);
             WorkUnitDatabase.markAsDead(remoteHostname);
+            synchronized (KNOWN_CLIENTS)
+                {
+                    KNOWN_CLIENTS.remove(remoteHostname);
+                }
         }
     }
 
@@ -147,10 +170,11 @@ public class Server implements Singleton
     {
         for (int i=0; i < 10; i++)
             {
-                DummyWorkUnit unit = new DummyWorkUnit();
+                DummyWorkUnit unit = new DummyWorkUnit(i==5); // make unit 6 fail
                 WorkEnvelope workEnvelope = new WorkEnvelope(unit);
                 WorkUnitDatabase.submit(workEnvelope);
             }
         Server.start();
+        Server.waitForCompletion();
     }  
 }

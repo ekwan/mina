@@ -131,6 +131,7 @@ public class GeneralThreadService
                     }
                 catch (Exception e)
                     {
+                        System.out.println("Error retrieving result:");
                         e.printStackTrace();
                     }
             }
@@ -187,7 +188,7 @@ public class GeneralThreadService
     {
         List<WorkUnit> workList = new ArrayList<>();
         for (int i=0; i < 16; i++)
-            workList.add(new DummyWorkUnit());
+            workList.add(new DummyWorkUnit(i==5)); // make unit 6 fail
         GeneralThreadService.submitAndWait(workList);
         System.exit(0);
     }

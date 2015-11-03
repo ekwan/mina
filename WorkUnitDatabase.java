@@ -37,16 +37,25 @@ public class WorkUnitDatabase implements Singleton
     }
 
     /** Submit a job to the queue. */
-    public static void submit(WorkEnvelope workEnvelope)
+    public static void submit(WorkEnvelope workEnvelope, boolean addToHead)
     {
         DatabaseEntry entry = new DatabaseEntry(workEnvelope.serverID, workEnvelope.workUnit, null, Status.SUBMITTED, null, null);
         synchronized (INTERNAL_LOCK)
         {
             if ( MAP.containsKey(workEnvelope.serverID) )
                 throw new IllegalArgumentException("serverID already in database, cannot create new key");
-            QUEUE.add(workEnvelope);
+            if ( addToHead )
+                QUEUE.addFirst(workEnvelope);
+            else
+                QUEUE.add(workEnvelope);
             MAP.put(workEnvelope.serverID, entry);
         }
+    }
+
+    /** Submit a job to the queue. */
+    public static void submit(WorkEnvelope workEnvelope)
+    {
+        submit(workEnvelope, false);
     }
 
     /** Take a job out of the queue and send it to a client. */
@@ -126,7 +135,6 @@ public class WorkUnitDatabase implements Singleton
     /** Mark all the work that has been dispatched to the specified host as dead. */
     public static void markAsDead(String remoteHostname)
     {
-        System.out.println("hello");
         // determine which entries are dead
         List<WorkEnvelope> newWork = new ArrayList<>();
         synchronized (INTERNAL_LOCK)
@@ -134,25 +142,28 @@ public class WorkUnitDatabase implements Singleton
                 List<Long> toBeRequeued = new ArrayList<>();
                 for (Long serverID : MAP.keySet())
                     {
-                        System.out.println(serverID);
                         DatabaseEntry oldEntry = MAP.get(serverID);
-                        if ( oldEntry.hostname.equals(remoteHostname) )
+                        if ( oldEntry.status == Status.SENT_OUT && oldEntry.hostname.equals(remoteHostname) )
                             {
                                 toBeRequeued.add(serverID);
                                 WorkEnvelope envelope = new WorkEnvelope(oldEntry.workUnit, Settings.HOSTNAME, oldEntry.serverID);
                                 newWork.add(envelope);
                             }
                     }
-                System.out.println("hello2");
                 MAP.keySet().removeAll(toBeRequeued);
             }   
-        System.out.println("hello3");
 
         // requeue work
         for (WorkEnvelope e : newWork)
-            WorkUnitDatabase.submit(e);
+            WorkUnitDatabase.submit(e, true);
         if ( newWork.size() > 0 )
-            System.out.printf("%d units that were previously dispatched to %s have been requeued.\n", newWork.size(), remoteHostname);
+            {
+                String workString = "";
+                for (WorkEnvelope e : newWork)
+                    workString += String.format("%d, ", e.serverID);
+                workString = workString.substring(0, workString.length()-2);
+                System.out.printf("%d units (%s) that were previously dispatched to %s have been requeued.\n", newWork.size(), workString, remoteHostname);
+            }
         else
             System.out.printf("No work to requeue for %s.\n", remoteHostname);
     }
@@ -171,6 +182,47 @@ public class WorkUnitDatabase implements Singleton
                     }
                 for (Long serverID : toBePurged)
                     MAP.remove(serverID);
+            }
+    }
+
+    /** Check if all work is done. */
+    public static boolean finished()
+    {
+        synchronized (INTERNAL_LOCK)
+            {
+                for (Long serverID : MAP.keySet())
+                    {
+                        DatabaseEntry entry = MAP.get(serverID);
+                        if ( entry.status == Status.SUBMITTED || entry.status == Status.SENT_OUT )
+                            return false;
+                    }
+            }
+        return true;
+    }
+
+    /** Get all the results. */
+    public static void printResults()
+    {
+        List<String> toBePrinted = new ArrayList<>();
+        synchronized (INTERNAL_LOCK)
+            {
+                for (Long serverID : MAP.keySet())
+                    {
+                        DatabaseEntry entry = MAP.get(serverID);
+                        if ( entry.status == Status.COMPLETED )
+                            toBePrinted.add(String.format("Unit %d (%s)", serverID, entry.hostname));
+                        else if ( entry.status == Status.FAILED )
+                            toBePrinted.add(String.format("Unit %d (%s) -- FAILED : %s", serverID, entry.hostname, entry.errorMessage));
+                    }
+            }
+        if ( toBePrinted.size() == 0 )
+            System.out.println("No results to show.");
+        else
+            {
+                System.out.println("Results:");
+                for (String s : toBePrinted)
+                    System.out.println("   " + s);
+                System.out.printf("%d total results.\n", toBePrinted.size());
             }
     }
 
@@ -242,7 +294,7 @@ public class WorkUnitDatabase implements Singleton
                 return true;
             if ( !(obj instanceof DatabaseEntry) )
                 return false;
-
+            
             DatabaseEntry d = (DatabaseEntry)obj;
             if ( serverID == d.serverID &&
                  Objects.equals(workUnit, d.workUnit) &&
