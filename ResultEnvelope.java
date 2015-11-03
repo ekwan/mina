@@ -31,6 +31,10 @@ public class ResultEnvelope implements Serializable, Immutable
     {
         if ( origin == null )
             throw new NullPointerException("null origin");
+        if ( result != null && errorMessage != null )
+            throw new IllegalArgumentException("check state");
+        if ( result == null && errorMessage == null )
+            throw new NullPointerException("should not be blank");
         this.result = result;
         this.errorMessage = errorMessage;
         this.origin = origin;

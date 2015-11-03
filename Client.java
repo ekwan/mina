@@ -87,7 +87,8 @@ public class Client implements Singleton
             if (message instanceof WorkEnvelope)
                 {
                     WorkEnvelope envelope = (WorkEnvelope)message;
-                    System.out.printf("Received work unit ID %d.\n", envelope.serverID);
+                    System.out.printf("Received work unit %d.\n", envelope.serverID);
+                    GeneralThreadService.submit(envelope, session);
                 }
             else if (message instanceof String)
                 {

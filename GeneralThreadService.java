@@ -164,6 +164,7 @@ public class GeneralThreadService
                     long serverID = workEnvelope.serverID;
                     ResultEnvelope resultEnvelope = new ResultEnvelope(result, null, Settings.HOSTNAME, serverID);
                     session.write(resultEnvelope);
+                    System.out.printf("Sent back work unit %d.\n", serverID);
                 }
 
                 public void onFailure(Throwable t)

@@ -34,38 +34,12 @@ public class WorkUnitDatabase implements Singleton
         MAP = new HashMap<>();
         INTERNAL_LOCK = new Object();
         QUEUE = new LinkedList<>();
-        KNOWN_CLIENTS = new ArrayList<>();
     }
-
-    /** Retrieve an entry from the map.  Throws an exception if it is not found. */
-    private static DatabaseEntry get(long serverID)
-    {
-        synchronized (INTERNAL_LOCK)
-            {
-                if ( !MAP.containsKey(serverID) )
-                    throw new IllegalArgumentException("expected to find an entry for serverID " + serverID);
-                return MAP.get(serverID);
-            }
-    }
-
-    /**
-     * Update the map that keeps track of everything.
-     * @param newEntry this entry will replace the old entry
-     */
-    private static void update(DatabaseEntry newEntry)
-    {
-        synchronized (INTERNAL_LOCK)
-        {
-            if ( !MAP.containsKey(newEntry.serverID) )
-                throw new IllegalArgumentException("serverID should already be in database but was not found, cannot update");
-            MAP.put(newEntry.serverID, newEntry);
-        }
-     }
 
     /** Submit a job to the queue. */
     public static void submit(WorkEnvelope workEnvelope)
     {
-        DatabaseEntry entry = new DatabaseEntry(workEnvelope.serverID, null, Status.SUBMITTED, null, null);
+        DatabaseEntry entry = new DatabaseEntry(workEnvelope.serverID, workEnvelope.workUnit, null, Status.SUBMITTED, null, null);
         synchronized (INTERNAL_LOCK)
         {
             if ( MAP.containsKey(workEnvelope.serverID) )
@@ -110,57 +84,77 @@ public class WorkUnitDatabase implements Singleton
             try
                 {
                     WriteFuture future = session.write(envelope);
-                    System.out.printf("Sent out work unit ID %d to %s.\n", envelope.serverID, remoteHostname);
+                    System.out.printf("Sent work unit %d to %s.\n", envelope.serverID, remoteHostname);
 
                     // update database
-                    DatabaseEntry entry = new DatabaseEntry(envelope.serverID, remoteHostname, Status.SENT_OUT, null, null);
+                    DatabaseEntry newEntry = new DatabaseEntry(envelope.serverID, oldEntry.workUnit, remoteHostname, Status.SENT_OUT, null, null);
+                    MAP.put(envelope.serverID, newEntry);
                 }
             catch (Exception e)
                 {
                     // print out the problem
-                    System.out.printf("Problem sending work unit ID %d:\n", envelope.serverID);
+                    System.out.printf("Problem sending work unit %d:\n", envelope.serverID);
                     e.printStackTrace();
 
                     // return the job to the queue
                     QUEUE.add(envelope);
                 }
-
         }
     }
 
     /** Receive a work unit. */
-    public static ResultEnvelope receive(ResultEnvelope resultEnvelope)
+    public static ResultEnvelope receive(ResultEnvelope resultEnvelope, String origin)
     {
-    }
-
-    /** Mark a job as having finished succesfully. */
-    public static void completed(long serverID, Result result)
-    {
-        DatabaseEntry oldEntry = get(serverID);
-        if ( oldEntry.status != Status.SENT_OUT )
-            throw new IllegalArgumentException("expected status to be SENT_OUT to change the status to COMPLETED");
-        DatabaseEntry newEntry = new DatabaseEntry(serverID, oldEntry.hostname, Status.COMPLETED, result, null);
-        update(newEntry);
-    }
-
-    /** Mark a job as having failed. */
-    public static void failed(long serverID, String errorMessage)
-    {
-        DatabaseEntry oldEntry = get(serverID);
-        if ( oldEntry.status != Status.SENT_OUT )
-            throw new IllegalArgumentException("expected status to be SENT_OUT to change the status to FAILED");
-        DatabaseEntry newEntry = new DatabaseEntry(serverID, oldEntry.hostname, Status.FAILED, null, errorMessage);
-        update(newEntry);
+        long serverID = resultEnvelope.serverID;
+        synchronized (INTERNAL_LOCK)
+            {
+                if ( !MAP.containsKey(serverID) )
+                    throw new IllegalArgumentException("expected to find key");
+                DatabaseEntry oldEntry = MAP.get(serverID);
+                if ( oldEntry.status != Status.SENT_OUT )
+                    throw new IllegalArgumentException("expected status to be SENT_OUT");
+                DatabaseEntry newEntry = null;
+                if ( resultEnvelope.result != null )
+                    newEntry = new DatabaseEntry(serverID, oldEntry.workUnit, origin, Status.COMPLETED, resultEnvelope.result, null);
+                else
+                    newEntry = new DatabaseEntry(serverID, oldEntry.workUnit, origin, Status.FAILED, null, resultEnvelope.errorMessage);
+                MAP.put(serverID, newEntry);
+            }
+        return resultEnvelope;
     }
 
     /** Mark all the work that has been dispatched to the specified host as dead. */
     public static void markAsDead(String remoteHostname)
     {
-        DatabaseEntry oldEntry = get(serverID);
-        if ( oldEntry.status != Status.FAILED )
-            throw new IllegalArgumentException("expected status to be FAILED to change the status to SUBMITTED");
-        DatabaseEntry newEntry = new DatabaseEntry(serverID, null, Status.SUBMITTED, null, null);
-        update(newEntry);
+        System.out.println("hello");
+        // determine which entries are dead
+        List<WorkEnvelope> newWork = new ArrayList<>();
+        synchronized (INTERNAL_LOCK)
+            {
+                List<Long> toBeRequeued = new ArrayList<>();
+                for (Long serverID : MAP.keySet())
+                    {
+                        System.out.println(serverID);
+                        DatabaseEntry oldEntry = MAP.get(serverID);
+                        if ( oldEntry.hostname.equals(remoteHostname) )
+                            {
+                                toBeRequeued.add(serverID);
+                                WorkEnvelope envelope = new WorkEnvelope(oldEntry.workUnit, Settings.HOSTNAME, oldEntry.serverID);
+                                newWork.add(envelope);
+                            }
+                    }
+                System.out.println("hello2");
+                MAP.keySet().removeAll(toBeRequeued);
+            }   
+        System.out.println("hello3");
+
+        // requeue work
+        for (WorkEnvelope e : newWork)
+            WorkUnitDatabase.submit(e);
+        if ( newWork.size() > 0 )
+            System.out.printf("%d units that were previously dispatched to %s have been requeued.\n", newWork.size(), remoteHostname);
+        else
+            System.out.printf("No work to requeue for %s.\n", remoteHostname);
     }
 
     /** Forget about all jobs that have completed successfully or failed to save memory. */
@@ -202,6 +196,9 @@ public class WorkUnitDatabase implements Singleton
         /** The ID of the WorkEnvelope associated with this piece of work. */
         private final long serverID;
 
+        /** The work unit. */
+        private final WorkUnit workUnit;
+
         /** Where the work is presently or was done. */
         private final String hostname;
 
@@ -214,9 +211,10 @@ public class WorkUnitDatabase implements Singleton
         /** The error message obtained. */
         private final String errorMessage;
 
-        public DatabaseEntry(long serverID, String hostname, Status status, Result result, String errorMessage)
+        public DatabaseEntry(long serverID, WorkUnit workUnit, String hostname, Status status, Result result, String errorMessage)
         {
             this.serverID = serverID;
+            this.workUnit = workUnit;
             this.hostname = hostname;
             this.status = status;
             this.result = result;
@@ -232,7 +230,7 @@ public class WorkUnitDatabase implements Singleton
         @Override
         public int hashCode()
         {
-            return Objects.hash(serverID, hostname, status, result, errorMessage);
+            return Objects.hash(serverID, workUnit, hostname, status, result, errorMessage);
         }
 
         @Override
@@ -246,9 +244,10 @@ public class WorkUnitDatabase implements Singleton
                 return false;
 
             DatabaseEntry d = (DatabaseEntry)obj;
-            if ( Objects.equals(serverID, d.serverID) &&
+            if ( serverID == d.serverID &&
+                 Objects.equals(workUnit, d.workUnit) &&
                  Objects.equals(hostname, d.hostname) &&
-                 Objects.equals(status, d.status) &&
+                 status == d.status &&
                  Objects.equals(result, d.result) &&
                  Objects.equals(errorMessage, d.errorMessage) )
                 return true;

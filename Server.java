@@ -84,7 +84,9 @@ public class Server implements Singleton
             if (message instanceof ResultEnvelope)
                 {
                     ResultEnvelope envelope = (ResultEnvelope)message;
-                    WorkUnitDatabase.receive(envelope);
+                    WorkUnitDatabase.receive(envelope, remoteHostname);
+                    System.out.printf("Received work unit %d from %s.\n", envelope.serverID, remoteHostname);
+                    WorkUnitDatabase.sendOutWork(remoteHostname, session);
                 }
             else if (message instanceof String)
                 {
