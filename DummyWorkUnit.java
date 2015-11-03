@@ -32,6 +32,7 @@ public class DummyWorkUnit implements Immutable, WorkUnit, Serializable
         try
             {
                 int time = ThreadLocalRandom.current().nextInt(MEAN_TIME-WIDTH, MEAN_TIME+WIDTH+1);
+                //System.out.printf("Waiting for %d seconds.\n", time);
                 Thread.sleep(time*1000);
             }
         catch (InterruptedException e)

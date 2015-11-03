@@ -21,7 +21,7 @@ public class GeneralThreadService
         // setup the thread pool
         ExecutorService fixedThreadPool = Executors.newFixedThreadPool(Settings.NUMBER_OF_THREADS);
         SERVICE = MoreExecutors.listeningDecorator(fixedThreadPool);
-        System.out.printf("GeneralThreadService started with %d threads.\n", Settings.NUMBER_OF_THREADS);
+        System.out.printf("GeneralThreadService started on %s with %d threads.\n", Settings.HOSTNAME, Settings.NUMBER_OF_THREADS);
     
         // create a default callback
         DEFAULT_CALLBACK = new FutureCallback<Result>()
@@ -44,7 +44,7 @@ public class GeneralThreadService
         throw new IllegalArgumentException("not instantiable");
     }
 
-    /** Run a job. */
+    /** Run a job with the default callback. */
     public static ListenableFuture<Result> submit(WorkUnit workUnit)
     {
         // add a default callback that prints out any error if one occurred

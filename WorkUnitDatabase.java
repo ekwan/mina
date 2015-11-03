@@ -203,16 +203,16 @@ public class WorkUnitDatabase implements Singleton
     /** Get all the results. */
     public static void printResults()
     {
-        List<String> toBePrinted = new ArrayList<>();
+        TreeMap<Long,String> toBePrinted = new TreeMap<>();
         synchronized (INTERNAL_LOCK)
             {
                 for (Long serverID : MAP.keySet())
                     {
                         DatabaseEntry entry = MAP.get(serverID);
                         if ( entry.status == Status.COMPLETED )
-                            toBePrinted.add(String.format("Unit %d (%s)", serverID, entry.hostname));
+                            toBePrinted.put(serverID, String.format("Unit %5d (%s)", serverID, entry.hostname));
                         else if ( entry.status == Status.FAILED )
-                            toBePrinted.add(String.format("Unit %d (%s) -- FAILED : %s", serverID, entry.hostname, entry.errorMessage));
+                            toBePrinted.put(serverID, String.format("Unit %5d (%s) -- FAILED : %s", serverID, entry.hostname, entry.errorMessage));
                     }
             }
         if ( toBePrinted.size() == 0 )
@@ -220,8 +220,8 @@ public class WorkUnitDatabase implements Singleton
         else
             {
                 System.out.println("Results:");
-                for (String s : toBePrinted)
-                    System.out.println("   " + s);
+                for (long serverID : toBePrinted.keySet())
+                    System.out.println("   " + toBePrinted.get(serverID));
                 System.out.printf("%d total results.\n", toBePrinted.size());
             }
     }

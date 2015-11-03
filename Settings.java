@@ -53,7 +53,8 @@ public class Settings implements Immutable, Singleton
     // Network Settings
 
         /** If a client runs, where should it look for the server? */
-        public static final String SERVER_HOSTNAME = "127.0.0.1";
+        public static final String SERVER_HOSTNAME = "dae22.rc.fas.harvard.edu";
+        //public static final String SERVER_HOSTNAME = "127.0.0.1"; // use for localhost
 
         /** The server will listen for connections on this port. */
         public static final int LISTENING_PORT = 9876;

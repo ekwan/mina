@@ -59,15 +59,27 @@ public class Server implements Singleton
         acceptor.setHandler(new ServerHandler());  
         
         // start accepting connections
-        try
+        int attempts = 0;
+        boolean success = false;
+        while (attempts <= 10)
             {
-                acceptor.bind(new InetSocketAddress(LISTENING_PORT));  
-                System.out.printf("Server listening on port %d.\n", LISTENING_PORT);  
+                attempts++;
+                try
+                    {
+                        acceptor.bind(new InetSocketAddress(LISTENING_PORT));  
+                        System.out.printf("Server listening on port %d.\n", LISTENING_PORT);  
+                        success = true;
+                        break;
+                    }
+                catch (Exception e)
+                    {
+                        System.out.println("Unable to start server:");
+                        e.printStackTrace();
+                    }
             }
-        catch (Exception e)
+        if ( !success )
             {
-                System.out.println("Unable to start server:");
-                e.printStackTrace();
+                System.out.printf("Giving up after %d attempts, quitting.\n", attempts);
                 System.exit(1);
             }
      }
@@ -93,15 +105,25 @@ public class Server implements Singleton
      */
     public static class ServerHandler extends IoHandlerAdapter
     {
-        public String remoteHostname = "unknown";
+        public static String getHostname(IoSession session)
+        {
+            String name = (String)(session.getAttribute("hostname"));
+            if ( name != null )
+                return name;
+            return "unknown";
+        }
 
         public void messageReceived(IoSession session, Object message) throws Exception
         {
             if (message instanceof ResultEnvelope)
                 {
                     ResultEnvelope envelope = (ResultEnvelope)message;
+                    String remoteHostname = getHostname(session);
                     WorkUnitDatabase.receive(envelope, remoteHostname);
-                    System.out.printf("Received work unit %d from %s.\n", envelope.serverID, remoteHostname);
+                    if ( envelope.errorMessage == null )
+                        System.out.printf("Received work unit %d from %s.\n", envelope.serverID, remoteHostname);
+                    else
+                        System.out.printf("Received work unit %d from %s (FAILED : %s).\n", envelope.serverID, remoteHostname, envelope.errorMessage);
                     WorkUnitDatabase.sendOutWork(remoteHostname, session);
                 }
             else if (message instanceof String)
@@ -119,7 +141,7 @@ public class Server implements Singleton
                                             String candidate = String.format("%s-%d", name, count);
                                             if ( !KNOWN_CLIENTS.contains(candidate) )
                                                 {
-                                                    remoteHostname = candidate;
+                                                    name = candidate;
                                                     success = true;
                                                     break;
                                                 }
@@ -128,16 +150,15 @@ public class Server implements Singleton
                                     if ( !success )
                                         throw new IllegalArgumentException("couldn't find unique name for " + name);
                                 }
-                            else
-                                remoteHostname = name;
-                            KNOWN_CLIENTS.add(remoteHostname);
+                            session.setAttribute("hostname", name);
+                            KNOWN_CLIENTS.add(name);
                         }
-                    int remoteThreads = Settings.getNumberOfThreads(remoteHostname);
-                    System.out.printf("Connected to client at %s (%s, %d threads).\n", remoteHostname, session.getRemoteAddress(), remoteThreads);
+                    int remoteThreads = Settings.getNumberOfThreads(name);
+                    System.out.printf("Connected to client at %s (%s, %d threads).\n", name, session.getRemoteAddress(), remoteThreads);
                     
                     // send the initial batch of jobs
                     for (int i=0; i < remoteThreads; i++)
-                        WorkUnitDatabase.sendOutWork(remoteHostname, session);
+                        WorkUnitDatabase.sendOutWork(name, session);
                 }
             else
                 throw new IllegalArgumentException("unrecognized object type");
@@ -151,11 +172,13 @@ public class Server implements Singleton
 
         public void sessionIdle(IoSession session, IdleStatus status)
         {
+            String remoteHostname = getHostname(session);
             WorkUnitDatabase.sendOutWork(remoteHostname, session);
         }
 
         public void sessionClosed(IoSession session) throws Exception
         {
+            String remoteHostname = getHostname(session);
             System.out.printf("Lost connection to %s.\n", remoteHostname);
             WorkUnitDatabase.markAsDead(remoteHostname);
             synchronized (KNOWN_CLIENTS)
@@ -168,7 +191,7 @@ public class Server implements Singleton
     /** For testing. */
     public static void main(String[] args) throws IOException
     {
-        for (int i=0; i < 10; i++)
+        for (int i=0; i < 100; i++)
             {
                 DummyWorkUnit unit = new DummyWorkUnit(i==5); // make unit 6 fail
                 WorkEnvelope workEnvelope = new WorkEnvelope(unit);
